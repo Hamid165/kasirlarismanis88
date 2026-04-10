@@ -530,6 +530,7 @@ function POSView({
   const [receiptNumber, setReceiptNumber] = useState("");
   const [queueMessage, setQueueMessage] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("Tunai");
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -562,11 +563,15 @@ function POSView({
     setIsInvoiceOpen(true);
     setOrderSuccess(false);
     setQueueMessage("");
+    setPaymentMethod("Tunai");
+    setAmountPaid("");
   };
 
   const handleCompleteTransaction = async () => {
-    const numericAmountPaid = parseInt(amountPaid) || 0;
-    if (numericAmountPaid < total) {
+    const isQRIS = paymentMethod === "QRIS";
+    const numericAmountPaid = isQRIS ? total : (parseInt(amountPaid) || 0);
+
+    if (!isQRIS && numericAmountPaid < total) {
       Swal.fire("Peringatan", "Uang yang dibayarkan kurang dari total belanja!", "warning");
       return;
     }
@@ -581,6 +586,7 @@ function POSView({
       items: cart.map((item) => `${item.name} (${item.qty}x)`).join("\n"),
       totalItems,
       total,
+      paymentMethod,
       rawItems: cart,
       timestamp: Date.now(),
     };
@@ -592,7 +598,7 @@ function POSView({
 
       await Swal.fire({
         title: "Pembayaran Berhasil!",
-        text: `Kembalian: ${formatRupiah(changeAmount)}`,
+        text: isQRIS ? "Pembayaran QRIS berhasil diterima" : `Kembalian: ${formatRupiah(changeAmount)}`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -601,6 +607,7 @@ function POSView({
       setCart([]);
       setCustomerName("");
       setAmountPaid("");
+      setPaymentMethod("Tunai");
       setOrderSuccess(false);
 
     } catch (error) {
@@ -771,23 +778,46 @@ function POSView({
                   <span className="font-medium text-gray-600">Total Harga</span>
                   <span className="font-bold text-gray-800">{formatRupiah(total)}</span>
                 </div>
+
                 <div className="flex justify-between items-center text-sm">
-                  <span className="font-medium text-gray-600">Tunai Dibayar</span>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={amountPaid}
-                    onChange={(e) => setAmountPaid(e.target.value)}
-                    className="w-32 p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-right font-bold"
-                  />
-                </div>
-                {parseInt(amountPaid) > 0 && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="font-medium text-gray-600">Kembalian</span>
-                    <span className="font-bold text-green-600">
-                      {formatRupiah((parseInt(amountPaid) || 0) - total)}
-                    </span>
+                  <span className="font-medium text-gray-600">Metode Pembayaran</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setPaymentMethod("Tunai"); setAmountPaid(""); }}
+                      className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "Tunai" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      Tunai
+                    </button>
+                    <button
+                      onClick={() => { setPaymentMethod("QRIS"); setAmountPaid(total.toString()); }}
+                      className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "QRIS" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      QRIS
+                    </button>
                   </div>
+                </div>
+
+                {paymentMethod === "Tunai" && (
+                  <>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-gray-600">Tunai Dibayar</span>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(e.target.value)}
+                        className="w-32 p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-right font-bold"
+                      />
+                    </div>
+                    {parseInt(amountPaid) > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-gray-600">Kembalian</span>
+                        <span className="font-bold text-green-600">
+                          {formatRupiah((parseInt(amountPaid) || 0) - total)}
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
                 
                 <div className="border-t border-gray-200 mt-2 pt-3 flex justify-between items-center bg-purple-50 p-3 rounded-lg">
@@ -911,13 +941,14 @@ function DashboardView({
                 <th className="p-4">Pelanggan</th>
                 <th className="p-4">Item</th>
                 <th className="p-4">Total</th>
+                <th className="p-4">Metode</th>
                 <th className="p-4">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {salesHistory.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-400">
+                  <td colSpan="7" className="p-8 text-center text-gray-400">
                     Belum ada data penjualan.
                   </td>
                 </tr>
@@ -940,6 +971,15 @@ function DashboardView({
                     </td>
                     <td className="p-4 font-bold">
                       {formatRupiah(order.total)}
+                    </td>
+                    <td className="p-4">
+                      {order.paymentMethod ? (
+                        <span className={`px-2 py-1 text-xs font-bold rounded-lg ${order.paymentMethod === 'QRIS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                          {order.paymentMethod}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
                     </td>
                     <td className="p-4">
                       <button
