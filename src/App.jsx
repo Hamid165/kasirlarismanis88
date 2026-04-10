@@ -86,7 +86,7 @@ export default function App() {
       "artifacts",
       myAppId,
       "users",
-      user.uid,
+      "global",
       "sales",
     );
 
@@ -133,7 +133,7 @@ export default function App() {
     try {
       // 🔥 Hapus dari Firestore
       await deleteDoc(
-        doc(db, "artifacts", myAppId, "users", user.uid, "sales", order.id),
+        doc(db, "artifacts", myAppId, "users", "global", "sales", order.id),
       );
 
       // 🔥 Hapus dari Google Sheets
@@ -207,7 +207,7 @@ export default function App() {
       "artifacts",
       myAppId,
       "users",
-      user.uid,
+      "global",
       "products",
     );
     const salesRef = collection(
@@ -215,7 +215,7 @@ export default function App() {
       "artifacts",
       myAppId,
       "users",
-      user.uid,
+      "global",
       "sales",
     );
 
@@ -282,7 +282,7 @@ export default function App() {
         "artifacts",
         myAppId,
         "users",
-        user.uid,
+        "global",
         "products",
         updatedProduct.id.toString(),
       ),
@@ -294,7 +294,7 @@ export default function App() {
     if (!user) return;
     const newId = Date.now();
     await setDoc(
-      doc(db, "artifacts", myAppId, "users", user.uid, "products", newId.toString()),
+      doc(db, "artifacts", myAppId, "users", "global", "products", newId.toString()),
       { ...newProduct, id: newId }
     );
   };
@@ -312,7 +312,7 @@ export default function App() {
     });
     if (confirmDelete.isConfirmed) {
       await deleteDoc(
-        doc(db, "artifacts", myAppId, "users", user.uid, "products", productId.toString())
+        doc(db, "artifacts", myAppId, "users", "global", "products", productId.toString())
       );
       Swal.fire("Dihapus!", "Menu berhasil dihapus.", "success");
     }
@@ -325,7 +325,7 @@ export default function App() {
       "artifacts",
       myAppId,
       "users",
-      user.uid,
+      "global",
       "system",
       "lock",
     );
@@ -341,7 +341,7 @@ export default function App() {
     });
     try {
       await addDoc(
-        collection(db, "artifacts", myAppId, "users", user.uid, "sales"),
+        collection(db, "artifacts", myAppId, "users", "global", "sales"),
         orderData,
       );
       fetch(
