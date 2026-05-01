@@ -19,6 +19,7 @@ import {
   Menu,
   ChevronLeft,
   AlertCircle,
+  Search,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -153,6 +154,50 @@ export default function App() {
     } catch (error) {
       console.error(error);
       Swal.fire("Gagal", "Gagal menghapus data transaksi!", "error");
+    }
+  };
+
+  const handleUpdatePaymentStatus = async (order) => {
+    if (!user) return;
+
+    const result = await Swal.fire({
+      title: 'Tandai sebagai Lunas?',
+      text: "Status pesanan ini akan diubah menjadi Lunas.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Lunas!',
+      cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // 🔥 Update Firestore
+      await updateDoc(
+        doc(db, "artifacts", myAppId, "users", "global", "sales", order.id),
+        { paymentStatus: "Lunas" }
+      );
+
+      // 🔥 Update Google Sheets
+      fetch(
+        "https://script.google.com/macros/s/AKfycbyXQiPcSLpP8O1OO7FksUOnbBhIs3JYwsa9e8wA-GkeZlBa1fG-tSWA7KvlBSol4Vwyzw/exec",
+        {
+          method: "POST",
+          mode: "no-cors",
+          body: JSON.stringify({
+            action: "updateStatus",
+            receiptNumber: order.receiptNumber,
+            paymentStatus: "Lunas"
+          }),
+        }
+      ).catch(console.error);
+
+      Swal.fire("Berhasil", "Status berhasil diubah menjadi Lunas!", "success");
+    } catch (error) {
+      console.error(error);
+      Swal.fire("Gagal", "Gagal mengubah status!", "error");
     }
   };
   const formatRupiah = (angka) => {
@@ -417,7 +462,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50 font-sans overflow-hidden">
+    <div className="flex flex-row h-screen bg-gray-50 font-sans overflow-hidden">
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-20 md:hidden"
@@ -492,6 +537,7 @@ export default function App() {
             isSidebarOpen={isSidebarOpen}
             toggleSidebar={() => setIsSidebarOpen(true)}
             handleDeleteTransaction={handleDeleteTransaction}
+            handleUpdatePaymentStatus={handleUpdatePaymentStatus}
             handleResetAll={handleResetAll}
           />
         )}
@@ -532,6 +578,9 @@ function POSView({
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Tunai");
   const [orderNotes, setOrderNotes] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -637,22 +686,36 @@ function POSView({
   return (
     <div className="flex flex-col md:flex-row h-full">
       <div className="flex-1 p-6 overflow-y-auto">
-        <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-          {!isSidebarOpen && (
-            <button
-              onClick={toggleSidebar}
-              className="p-2 bg-white rounded-lg shadow-sm text-gray-600"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          )}{" "}
-          Pilih Menu
-        </h2>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3">
+            {!isSidebarOpen && (
+              <button
+                onClick={toggleSidebar}
+                className="p-2 bg-white rounded-lg shadow-sm text-gray-600"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}{" "}
+            Pilih Menu
+          </h2>
+          <div className="relative w-full md:w-64">
+            <input
+              type="text"
+              placeholder="Cari menu..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-sm"
+            />
+            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
           {products.length === 0 ? (
             <p className="text-gray-500">Memuat menu...</p>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-gray-500 col-span-full">Menu "{searchQuery}" tidak ditemukan.</p>
           ) : (
-            products.map((product) => (
+            filteredProducts.map((product) => (
               <div
                 key={product.id}
                 onClick={() => addToCart(product)}
@@ -688,7 +751,7 @@ function POSView({
           )}
         </div>
       </div>
-      <div className="w-full md:w-96 bg-white border-t md:border-l border-gray-200 flex flex-col shadow-xl z-10">
+      <div className="w-full md:w-96 h-[45vh] md:h-auto bg-white border-t md:border-l border-gray-200 flex flex-col shadow-xl z-10 shrink-0">
         <div className="p-6 border-b border-gray-100">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <ShoppingCart className="w-5 h-5" /> Pesanan Baru
@@ -790,24 +853,24 @@ function POSView({
                   <span className="font-bold text-gray-800">{formatRupiah(total)}</span>
                 </div>
 
-                <div className="flex justify-between items-center text-sm">
-                  <span className="font-medium text-gray-600">Metode Pembayaran</span>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-sm gap-2">
+                  <span className="font-medium text-gray-600 mb-1 sm:mb-0">Metode Pembayaran</span>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setPaymentMethod("Tunai"); setAmountPaid(""); }}
-                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "Tunai" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      className={`px-3 py-2 flex-1 sm:flex-none rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "Tunai" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                     >
                       Tunai
                     </button>
                     <button
                       onClick={() => { setPaymentMethod("QRIS"); setAmountPaid(total.toString()); }}
-                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "QRIS" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      className={`px-3 py-2 flex-1 sm:flex-none rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "QRIS" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                     >
                       QRIS
                     </button>
                     <button
                       onClick={() => { setPaymentMethod("COD"); setAmountPaid(total.toString()); }}
-                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "COD" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      className={`px-3 py-2 flex-1 sm:flex-none rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "COD" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                     >
                       COD
                     </button>
@@ -902,6 +965,7 @@ function DashboardView({
   isSidebarOpen,
   toggleSidebar,
   handleDeleteTransaction,
+  handleUpdatePaymentStatus,
   handleResetAll,
 }) {
   const totalRevenue = salesHistory.reduce(
@@ -910,19 +974,34 @@ function DashboardView({
   );
   const totalOrders = salesHistory.length;
 
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredSales = salesHistory.filter(order => 
+    (order.receiptNumber && order.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase())) || 
+    (order.customer && order.customer.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   return (
     <div className="p-6 h-full overflow-y-auto bg-gray-50">
-      <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-        {!isSidebarOpen && (
-          <button
-            onClick={toggleSidebar}
-            className="p-2 bg-white rounded-lg shadow-sm border border-gray-200"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}{" "}
-        Dashboard Statistik
-      </h2>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3">
+          {!isSidebarOpen && (
+            <button
+              onClick={toggleSidebar}
+              className="p-2 bg-white rounded-lg shadow-sm border border-gray-200"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}{" "}
+          Dashboard Statistik
+        </h2>
+        <button
+          onClick={handleResetAll}
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm shrink-0 transition-colors"
+        >
+          Reset Data
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
           <div className="p-4 bg-green-100 text-green-600 rounded-xl">
@@ -950,15 +1029,19 @@ function DashboardView({
         </div>
       </div>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+        <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row justify-between md:items-center gap-4">
           <h3 className="font-bold text-gray-800">Riwayat Penjualan</h3>
 
-          <button
-            onClick={handleResetAll}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg font-bold text-sm"
-          >
-            Reset Data
-          </button>
+          <div className="relative w-full sm:w-64">
+            <input
+              type="text"
+              placeholder="Cari invoice / pelanggan..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-sm"
+            />
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -975,14 +1058,14 @@ function DashboardView({
               </tr>
             </thead>
             <tbody>
-              {salesHistory.length === 0 ? (
+              {filteredSales.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="p-8 text-center text-gray-400">
-                    Belum ada data penjualan.
+                    {searchQuery ? "Data tidak ditemukan." : "Belum ada data penjualan."}
                   </td>
                 </tr>
               ) : (
-                salesHistory.map((order, i) => (
+                filteredSales.map((order, i) => (
                   <tr
                     key={i}
                     className="border-b border-gray-50 hover:bg-gray-50"
@@ -1016,7 +1099,7 @@ function DashboardView({
                       )}
                     </td>
                     <td className="p-4">
-                      {order.paymentStatus === "Belum Lunas" || order.paymentMethod === "COD" ? (
+                      {order.paymentStatus === "Belum Lunas" || (order.paymentMethod === "COD" && order.paymentStatus !== "Lunas") ? (
                         <span className="px-2 py-1 text-xs font-bold rounded-lg bg-red-100 text-red-700">
                           Belum Lunas
                         </span>
@@ -1026,10 +1109,18 @@ function DashboardView({
                         </span>
                       )}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 flex gap-2 items-center">
+                      {(order.paymentStatus === "Belum Lunas" || (order.paymentMethod === "COD" && order.paymentStatus !== "Lunas")) && (
+                        <button
+                          onClick={() => handleUpdatePaymentStatus(order)}
+                          className="px-3 py-1 bg-green-500 text-white rounded-lg text-xs hover:bg-green-600"
+                        >
+                          Lunaskan
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteTransaction(order)}
-                        className="px-3 py-1 bg-red-500 text-white rounded-lg text-xs"
+                        className="px-3 py-1 bg-red-500 text-white rounded-lg text-xs hover:bg-red-600"
                       >
                         Hapus
                       </button>
