@@ -531,6 +531,7 @@ function POSView({
   const [queueMessage, setQueueMessage] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Tunai");
+  const [orderNotes, setOrderNotes] = useState("");
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -559,19 +560,25 @@ function POSView({
 
   const handleCheckout = () => {
     if (cart.length === 0) return;
+    if (!customerName.trim()) {
+      Swal.fire("Peringatan", "Nama pelanggan wajib diisi!", "warning");
+      return;
+    }
     setReceiptNumber(`INV-${new Date().getTime().toString().slice(-6)}`);
     setIsInvoiceOpen(true);
     setOrderSuccess(false);
     setQueueMessage("");
     setPaymentMethod("Tunai");
     setAmountPaid("");
+    setOrderNotes("");
   };
 
   const handleCompleteTransaction = async () => {
     const isQRIS = paymentMethod === "QRIS";
-    const numericAmountPaid = isQRIS ? total : (parseInt(amountPaid) || 0);
+    const isCOD = paymentMethod === "COD";
+    const numericAmountPaid = isQRIS || isCOD ? total : (parseInt(amountPaid) || 0);
 
-    if (!isQRIS && numericAmountPaid < total) {
+    if (!isQRIS && !isCOD && numericAmountPaid < total) {
       Swal.fire("Peringatan", "Uang yang dibayarkan kurang dari total belanja!", "warning");
       return;
     }
@@ -579,6 +586,8 @@ function POSView({
     setIsProcessing(true);
     setQueueMessage("");
     const dateNow = new Date().toLocaleString("id-ID");
+    const paymentStatus = isCOD ? "Belum Lunas" : "Lunas";
+
     const orderData = {
       receiptNumber,
       date: dateNow,
@@ -587,6 +596,8 @@ function POSView({
       totalItems,
       total,
       paymentMethod,
+      paymentStatus,
+      notes: orderNotes,
       rawItems: cart,
       timestamp: Date.now(),
     };
@@ -597,8 +608,8 @@ function POSView({
       const changeAmount = numericAmountPaid - total;
 
       await Swal.fire({
-        title: "Pembayaran Berhasil!",
-        text: isQRIS ? "Pembayaran QRIS berhasil diterima" : `Kembalian: ${formatRupiah(changeAmount)}`,
+        title: isCOD ? "Pesanan Berhasil!" : "Pembayaran Berhasil!",
+        text: isQRIS ? "Pembayaran QRIS berhasil diterima" : isCOD ? "Pesanan COD berhasil dibuat (Belum Lunas)" : `Kembalian: ${formatRupiah(changeAmount)}`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -784,15 +795,21 @@ function POSView({
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setPaymentMethod("Tunai"); setAmountPaid(""); }}
-                      className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "Tunai" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "Tunai" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                     >
                       Tunai
                     </button>
                     <button
                       onClick={() => { setPaymentMethod("QRIS"); setAmountPaid(total.toString()); }}
-                      className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "QRIS" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "QRIS" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                     >
                       QRIS
+                    </button>
+                    <button
+                      onClick={() => { setPaymentMethod("COD"); setAmountPaid(total.toString()); }}
+                      className={`px-3 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${paymentMethod === "COD" ? "bg-purple-600 text-white ring-2 ring-purple-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      COD
                     </button>
                   </div>
                 </div>
@@ -819,6 +836,17 @@ function POSView({
                     )}
                   </>
                 )}
+
+                <div className="flex flex-col text-sm mt-2">
+                  <span className="font-medium text-gray-600 mb-1">Catatan (Opsional)</span>
+                  <textarea
+                    placeholder="Contoh: Kurangi gula, pedas dikit..."
+                    value={orderNotes}
+                    onChange={(e) => setOrderNotes(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none"
+                    rows="2"
+                  ></textarea>
+                </div>
                 
                 <div className="border-t border-gray-200 mt-2 pt-3 flex justify-between items-center bg-purple-50 p-3 rounded-lg">
                   <span className="font-bold text-gray-800">
@@ -942,13 +970,14 @@ function DashboardView({
                 <th className="p-4">Item</th>
                 <th className="p-4">Total</th>
                 <th className="p-4">Metode</th>
+                <th className="p-4">Status</th>
                 <th className="p-4">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {salesHistory.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-gray-400">
+                  <td colSpan="8" className="p-8 text-center text-gray-400">
                     Belum ada data penjualan.
                   </td>
                 </tr>
@@ -968,17 +997,33 @@ function DashboardView({
                       title={order.items}
                     >
                       {order.items}
+                      {order.notes && (
+                        <div className="text-xs text-purple-600 mt-1 italic whitespace-normal">
+                          Catatan: {order.notes}
+                        </div>
+                      )}
                     </td>
                     <td className="p-4 font-bold">
                       {formatRupiah(order.total)}
                     </td>
                     <td className="p-4">
                       {order.paymentMethod ? (
-                        <span className={`px-2 py-1 text-xs font-bold rounded-lg ${order.paymentMethod === 'QRIS' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        <span className={`px-2 py-1 text-xs font-bold rounded-lg ${order.paymentMethod === 'QRIS' ? 'bg-blue-100 text-blue-700' : order.paymentMethod === 'COD' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
                           {order.paymentMethod}
                         </span>
                       ) : (
                         <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {order.paymentStatus === "Belum Lunas" || order.paymentMethod === "COD" ? (
+                        <span className="px-2 py-1 text-xs font-bold rounded-lg bg-red-100 text-red-700">
+                          Belum Lunas
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 text-xs font-bold rounded-lg bg-green-100 text-green-700">
+                          Lunas
+                        </span>
                       )}
                     </td>
                     <td className="p-4">
