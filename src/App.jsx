@@ -20,6 +20,10 @@ import {
   ChevronLeft,
   AlertCircle,
   Search,
+  BadgeCheck,
+  Clock,
+  Soup,
+  GlassWater,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -974,6 +978,31 @@ function DashboardView({
   );
   const totalOrders = salesHistory.length;
 
+  // Stats tambahan
+  const totalLunas = salesHistory
+    .filter((o) => o.paymentStatus === "Lunas")
+    .reduce((sum, o) => sum + o.total, 0);
+
+  const totalBelumLunas = salesHistory
+    .filter((o) => o.paymentStatus === "Belum Lunas")
+    .reduce((sum, o) => sum + o.total, 0);
+
+  const totalGyoza = salesHistory.reduce((sum, order) => {
+    if (!order.rawItems) return sum;
+    const gyozaItem = order.rawItems.find((item) =>
+      item.name.toLowerCase().includes("gyoza")
+    );
+    return sum + (gyozaItem ? gyozaItem.qty : 0);
+  }, 0);
+
+  const totalEsUbi = salesHistory.reduce((sum, order) => {
+    if (!order.rawItems) return sum;
+    const esUbiItem = order.rawItems.find((item) =>
+      item.name.toLowerCase().includes("es ubi")
+    );
+    return sum + (esUbiItem ? esUbiItem.qty : 0);
+  }, 0);
+
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredSales = salesHistory.filter(order => 
@@ -1002,7 +1031,9 @@ function DashboardView({
           Reset Data
         </button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+      {/* Baris 1: Pendapatan & Transaksi */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
           <div className="p-4 bg-green-100 text-green-600 rounded-xl">
             <TrendingUp className="w-8 h-8" />
@@ -1024,6 +1055,64 @@ function DashboardView({
             <p className="text-sm text-gray-500 font-medium">Total Transaksi</p>
             <h3 className="text-3xl font-bold text-gray-800">
               {totalOrders} Pesanan
+            </h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Baris 2: Lunas & Belum Lunas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-emerald-100 flex items-center gap-4">
+          <div className="p-4 bg-emerald-100 text-emerald-600 rounded-xl">
+            <BadgeCheck className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Sudah Terbayar / Lunas</p>
+            <h3 className="text-2xl font-bold text-emerald-700">
+              {formatRupiah(totalLunas)}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {salesHistory.filter((o) => o.paymentStatus === "Lunas").length} transaksi lunas
+            </p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100 flex items-center gap-4">
+          <div className="p-4 bg-orange-100 text-orange-500 rounded-xl">
+            <Clock className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Belum Terbayar / COD</p>
+            <h3 className="text-2xl font-bold text-orange-600">
+              {formatRupiah(totalBelumLunas)}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {salesHistory.filter((o) => o.paymentStatus === "Belum Lunas").length} transaksi belum lunas
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Baris 3: Produk terjual */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100 flex items-center gap-4">
+          <div className="p-4 bg-orange-100 text-orange-600 rounded-xl">
+            <Soup className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Total Gyoza Terjual</p>
+            <h3 className="text-3xl font-bold text-gray-800">
+              {totalGyoza} <span className="text-lg font-medium text-gray-500">porsi</span>
+            </h3>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-purple-100 flex items-center gap-4">
+          <div className="p-4 bg-purple-100 text-purple-600 rounded-xl">
+            <GlassWater className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Total Es Ubi Ungu Terjual</p>
+            <h3 className="text-3xl font-bold text-gray-800">
+              {totalEsUbi} <span className="text-lg font-medium text-gray-500">gelas</span>
             </h3>
           </div>
         </div>
