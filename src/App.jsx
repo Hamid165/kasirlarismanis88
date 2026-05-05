@@ -24,6 +24,8 @@ import {
   Clock,
   Soup,
   GlassWater,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -68,6 +70,8 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeBatch, setActiveBatch] = useState(() => parseInt(localStorage.getItem("activeBatch") || "2"));
+  const [isBatchLocked, setIsBatchLocked] = useState(() => localStorage.getItem("isBatchLocked") === "true");
 
 
   const handleResetAll = async () => {
@@ -406,6 +410,18 @@ export default function App() {
     }
   };
 
+  const handleChangeBatch = (newBatch) => {
+    if (isBatchLocked) return;
+    localStorage.setItem("activeBatch", newBatch.toString());
+    setActiveBatch(newBatch);
+  };
+
+  const handleToggleBatchLock = () => {
+    const next = !isBatchLocked;
+    localStorage.setItem("isBatchLocked", next.toString());
+    setIsBatchLocked(next);
+  };
+
   // --- VIEW LOGIN ---
   if (view === "login") {
     return (
@@ -532,6 +548,8 @@ export default function App() {
             renderIcon={renderIcon}
             isSidebarOpen={isSidebarOpen}
             toggleSidebar={() => setIsSidebarOpen(true)}
+            activeBatch={activeBatch}
+            isBatchLocked={isBatchLocked}
           />
         )}
         {view === "dashboard" && (
@@ -543,6 +561,10 @@ export default function App() {
             handleDeleteTransaction={handleDeleteTransaction}
             handleUpdatePaymentStatus={handleUpdatePaymentStatus}
             handleResetAll={handleResetAll}
+            activeBatch={activeBatch}
+            onChangeBatch={handleChangeBatch}
+            isBatchLocked={isBatchLocked}
+            onToggleLock={handleToggleBatchLock}
           />
         )}
         {view === "settings" && (
@@ -571,6 +593,8 @@ function POSView({
   renderIcon,
   isSidebarOpen,
   toggleSidebar,
+  activeBatch,
+  isBatchLocked,
 }) {
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
@@ -628,6 +652,7 @@ function POSView({
 
   const handleCompleteTransaction = async () => {
     const isQRIS = paymentMethod === "QRIS";
+    // activeBatch diakses dari props
     const isCOD = paymentMethod === "COD";
     const numericAmountPaid = isQRIS || isCOD ? total : (parseInt(amountPaid) || 0);
 
@@ -653,6 +678,8 @@ function POSView({
       notes: orderNotes,
       rawItems: cart,
       timestamp: Date.now(),
+      batch: activeBatch,
+      sheetName: `Batch ${activeBatch}`,
     };
 
     try {
@@ -702,6 +729,15 @@ function POSView({
             )}{" "}
             Pilih Menu
           </h2>
+          {/* Badge Batch Aktif */}
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold ${
+            isBatchLocked
+              ? "bg-red-50 text-red-600 border border-red-200"
+              : "bg-purple-50 text-purple-600 border border-purple-200"
+          }`}>
+            {isBatchLocked ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}
+            Batch {activeBatch} {isBatchLocked ? "(Terkunci)" : "(Tidak Terkunci)"}
+          </div>
           <div className="relative w-full md:w-64">
             <input
               type="text"
@@ -971,48 +1007,40 @@ function DashboardView({
   handleDeleteTransaction,
   handleUpdatePaymentStatus,
   handleResetAll,
+  activeBatch,
+  onChangeBatch,
+  isBatchLocked,
+  onToggleLock,
 }) {
-  const totalRevenue = salesHistory.reduce(
-    (sum, order) => sum + order.total,
-    0,
-  );
-  const totalOrders = salesHistory.length;
-
-  // Stats tambahan
-  const totalLunas = salesHistory
-    .filter((o) => o.paymentStatus === "Lunas")
-    .reduce((sum, o) => sum + o.total, 0);
-
-  const totalBelumLunas = salesHistory
-    .filter((o) => o.paymentStatus === "Belum Lunas")
-    .reduce((sum, o) => sum + o.total, 0);
-
-  const totalGyoza = salesHistory.reduce((sum, order) => {
-    if (!order.rawItems) return sum;
-    const gyozaItem = order.rawItems.find((item) =>
-      item.name.toLowerCase().includes("gyoza")
-    );
-    return sum + (gyozaItem ? gyozaItem.qty : 0);
-  }, 0);
-
-  const totalEsUbi = salesHistory.reduce((sum, order) => {
-    if (!order.rawItems) return sum;
-    const esUbiItem = order.rawItems.find((item) =>
-      item.name.toLowerCase().includes("es ubi")
-    );
-    return sum + (esUbiItem ? esUbiItem.qty : 0);
-  }, 0);
-
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewBatch, setViewBatch] = useState(activeBatch);
 
-  const filteredSales = salesHistory.filter(order => 
-    (order.receiptNumber && order.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase())) || 
+  // Data difilter berdasarkan batch. Transaksi lama tanpa field batch dianggap Batch 1
+  const batchSales = salesHistory.filter(order => (order.batch || 1) === viewBatch);
+
+  const totalRevenue = batchSales.reduce((sum, o) => sum + o.total, 0);
+  const totalOrders = batchSales.length;
+  const totalLunas = batchSales.filter(o => o.paymentStatus === "Lunas").reduce((sum, o) => sum + o.total, 0);
+  const totalBelumLunas = batchSales.filter(o => o.paymentStatus === "Belum Lunas").reduce((sum, o) => sum + o.total, 0);
+  const totalGyoza = batchSales.reduce((sum, order) => {
+    if (!order.rawItems) return sum;
+    const item = order.rawItems.find(i => i.name.toLowerCase().includes("gyoza"));
+    return sum + (item ? item.qty : 0);
+  }, 0);
+  const totalEsUbi = batchSales.reduce((sum, order) => {
+    if (!order.rawItems) return sum;
+    const item = order.rawItems.find(i => i.name.toLowerCase().includes("es ubi"));
+    return sum + (item ? item.qty : 0);
+  }, 0);
+
+  const filteredSales = batchSales.filter(order =>
+    (order.receiptNumber && order.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (order.customer && order.customer.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <div className="p-6 h-full overflow-y-auto bg-gray-50">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3">
           {!isSidebarOpen && (
             <button
@@ -1029,6 +1057,41 @@ function DashboardView({
           className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm shrink-0 transition-colors"
         >
           Reset Data
+        </button>
+      </div>
+
+      {/* Selector Batch */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-6 flex flex-col sm:flex-row items-center gap-3">
+        <span className="text-sm text-gray-500 font-medium shrink-0">Pilih Batch:</span>
+        <div className="flex gap-2 flex-wrap">
+          {[1, 2, 3, 4].map(b => (
+            <button
+              key={b}
+              onClick={() => { onChangeBatch(b); setViewBatch(b); }}
+              className={`px-5 py-2 rounded-xl font-bold text-sm transition-all ${
+                viewBatch === b
+                  ? "bg-purple-600 text-white shadow-md ring-2 ring-purple-200"
+                  : "bg-gray-100 text-gray-600 hover:bg-purple-50 hover:text-purple-700"
+              }`}
+            >
+              Batch {b}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onToggleLock}
+          title={isBatchLocked ? "Klik untuk buka kunci batch" : "Klik untuk kunci batch aktif"}
+          className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+            isBatchLocked
+              ? "bg-red-100 text-red-600 hover:bg-red-200 ring-2 ring-red-200"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
+        >
+          {isBatchLocked ? (
+            <><Lock className="w-4 h-4" /> Terkunci — Batch {activeBatch}</>
+          ) : (
+            <><LockOpen className="w-4 h-4" /> Kunci Batch</>
+          )}
         </button>
       </div>
 
@@ -1072,7 +1135,7 @@ function DashboardView({
               {formatRupiah(totalLunas)}
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              {salesHistory.filter((o) => o.paymentStatus === "Lunas").length} transaksi lunas
+              {batchSales.filter((o) => o.paymentStatus === "Lunas").length} transaksi lunas
             </p>
           </div>
         </div>
@@ -1086,7 +1149,7 @@ function DashboardView({
               {formatRupiah(totalBelumLunas)}
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              {salesHistory.filter((o) => o.paymentStatus === "Belum Lunas").length} transaksi belum lunas
+              {batchSales.filter((o) => o.paymentStatus === "Belum Lunas").length} transaksi belum lunas
             </p>
           </div>
         </div>
@@ -1136,7 +1199,6 @@ function DashboardView({
           <table className="w-full text-left text-sm">
             <thead className="bg-white border-b border-gray-100 text-gray-500">
               <tr>
-                <th className="p-4">Invoice</th>
                 <th className="p-4">Waktu</th>
                 <th className="p-4">Pelanggan</th>
                 <th className="p-4">Item</th>
@@ -1149,8 +1211,8 @@ function DashboardView({
             <tbody>
               {filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-gray-400">
-                    {searchQuery ? "Data tidak ditemukan." : "Belum ada data penjualan."}
+                  <td colSpan="7" className="p-8 text-center text-gray-400">
+                    {searchQuery ? "Data tidak ditemukan." : `Belum ada data penjualan untuk Batch ${viewBatch}.`}
                   </td>
                 </tr>
               ) : (
@@ -1159,16 +1221,23 @@ function DashboardView({
                     key={i}
                     className="border-b border-gray-50 hover:bg-gray-50"
                   >
-                    <td className="p-4 font-mono text-xs text-purple-600">
-                      {order.receiptNumber}
-                    </td>
                     <td className="p-4 text-gray-600">{order.date}</td>
                     <td className="p-4 font-medium">{order.customer}</td>
                     <td
                       className="p-4 text-gray-600 max-w-xs truncate"
                       title={order.items}
                     >
-                      {order.items}
+                      {order.items
+                        ? order.items.split("\n")
+                            .sort((a, b) => {
+                              const aIsGyoza = a.toLowerCase().includes("gyoza");
+                              const bIsGyoza = b.toLowerCase().includes("gyoza");
+                              if (aIsGyoza && !bIsGyoza) return -1;
+                              if (!aIsGyoza && bIsGyoza) return 1;
+                              return 0;
+                            })
+                            .join(", ")
+                        : "-"}
                       {order.notes && (
                         <div className="text-xs text-purple-600 mt-1 italic whitespace-normal">
                           Catatan: {order.notes}
